@@ -1,0 +1,12 @@
+scripts/__pycache__/
+*.pyc
+
+apk/*.apk
+!apk/.gitkeep
+
+workdir/
+
+web_viewer/node_modules/
+web_viewer/dist/
+web_viewer/public/*
+!web_viewer/public/.gitkeep
