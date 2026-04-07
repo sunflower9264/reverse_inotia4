@@ -221,13 +221,15 @@ worldmap 逆向分两部分：
 所有稳定下来的理解都落到了：
 
 - `scripts/export_map_viewer_dataset.py`
+- `scripts/consolidate_texts.py`
 
 它承担了三个角色：
 
 - 资源读取器
   - 负责 APK 解压、目录准备、容器解码、entry 切分
 - 导出器
-  - 负责 atlas、地图 JSON、文本、worldmap、PNG、OGG 的输出
+  - `export_map_viewer_dataset.py` 负责 atlas、地图 JSON、worldmap、PNG、OGG 的输出
+  - `consolidate_texts.py` 负责 `memorytext_zhhans`、`game.dat.jpg`、`eventdata.dat.jpg` 关联出的文本档案输出
 - 校验器
   - 负责 tile coverage 检查，以及通过 viewer 进行视觉回归
 
@@ -243,14 +245,14 @@ worldmap 逆向分两部分：
 - layer / shadow / top 的顺序是否正确
 - feature 锚点和 flip 是否正确
 - worldmap hotspot 是否落在正确区域
-- memorytext offset 与标记解释是否合理
+- 中文对白、静态名称/描述关系和原始 `text_id` 引用是否合理
 - PNG / OGG 是否被正确识别并导出
 
 具体做法是：
 
 - 地图页对照 `grid / flip / raw flags / tile index`
 - worldmap 页检查热点和 `map_id` 列表
-- 文本页检查控制标记和原文
+- 文本档案页检查对白场景、关系导出和原文引用
 - 图片/音频页检查文件头识别和导出路径是否正确
 
 ## 当前可信度较高的结论

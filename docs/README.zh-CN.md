@@ -4,7 +4,7 @@
 
 # reverse_inotia4
 
-`reverse_inotia4` 是一个围绕 Android APK 资源逆向整理出来的本地工具链：它会从 `apk/` 中读取唯一 APK，自动解压到 `workdir/`，解析 `assets/common/game_res/` 中的资源，再生成一个可直接浏览地图、文本、图片和音频的 Web viewer 数据集。
+`reverse_inotia4` 是一个围绕 Android APK 资源逆向整理出来的本地工具链：它会从 `apk/` 中读取唯一 APK，自动解压到 `workdir/`，解析 `assets/common/game_res/` 中的资源，再分别生成地图/世界地图/图片/音频数据集，以及中文文本档案数据集。
 
 ## 文档入口
 
@@ -30,8 +30,11 @@
 ├─ ida/
 │  └─ dump_key_functions.py
 ├─ scripts/
+│  ├─ consolidate_texts.py
 │  └─ export_map_viewer_dataset.py
 ├─ web_viewer/
+│  ├─ data/
+│  │  └─ texts/
 │  ├─ public/
 │  │  └─ .gitkeep
 │  ├─ src/
@@ -48,7 +51,9 @@
 - `workdir/`
   - 脚本自动解压 APK 的工作目录
 - `web_viewer/public/`
-  - 从 APK 生成的本地数据集，运行时唯一数据源
+  - 从 APK 生成的地图、worldmap、图片、音频数据集
+- `web_viewer/data/texts/`
+  - 单独生成的中文文本档案数据集
 
 ## 这套逆向主线做了什么
 
@@ -69,11 +74,15 @@
 - 解析 `i_worldmap.dat.jpg`
 - 解析 `memorytext_zhhans.dat.jpg`
 - 解析 `m0..m415.dat.jpg`
-- 导出 tile atlas、feature atlas、地图 JSON、预览图、worldmap 数据集和简中文本清单
+- 导出 tile atlas、feature atlas、地图 JSON、预览图、worldmap 数据集
+- 导出中文文本档案：
+  - `consolidated_texts.json`
+  - `static_relationships.json`
+  - `event_dialogues.json`
 - 导出 `game_res` 中未加密的 PNG 图片和 OGG 音频清单
 - 在网页里显示 `base / layer / shadow1 / shadow2 / top / static feature`
 - 在网页里显示世界地图整图与区域热点
-- 在网页里显示 `memorytext` 检索、原始文本和格式化预览
+- 在网页里显示剧情对白、静态描述关系和原始文本检索
 - 在网页里显示未加密图片缩略图浏览与大图预览
 - 在网页里显示 BGM / SE 音频列表与内置播放器
 - 地图、文本、图片、音频页面右侧详情面板在桌面端保持粘性侧栏
@@ -82,19 +91,32 @@
 ## 使用方式
 
 1. 把唯一的 APK 放进 `apk/`
-2. 在仓库根目录执行：
+2. 在仓库根目录先生成地图 / worldmap / 图片 / 音频数据集：
 
 ```powershell
 python scripts/export_map_viewer_dataset.py
 ```
 
-脚本会自动：
+这个脚本会自动：
 
 - 检查 `apk/` 中是否恰好存在 1 个 APK
 - 清空并重建 `workdir/`
 - 将 APK 解压到 `workdir/<apk_stem>/`
 - 从 `workdir/<apk_stem>/assets/common/game_res/` 读取资源
 - 重建 `web_viewer/public/`
+- 从 `data/worldmap_regions.json` 读取 worldmap 区域映射
+
+3. 再生成中文文本档案：
+
+```powershell
+python scripts/consolidate_texts.py
+```
+
+这个脚本会自动：
+
+- 复用或重建 `workdir/`
+- 读取 `memorytext_zhhans.dat.jpg`、`game.dat.jpg` 和 `eventdata.dat.jpg`
+- 重建 `web_viewer/data/texts/`
 
 如果 `apk/` 中没有 APK，或者有多个 APK，脚本会直接报错，不会自动挑选。
 
@@ -123,7 +145,7 @@ npm run build
 
 ## 生成数据集
 
-运行时真正读取的是本地生成后的 `web_viewer/public/`，主要结构如下：
+运行时地图 / worldmap / 图片 / 音频部分读取的是本地生成后的 `web_viewer/public/`，主要结构如下：
 
 ```text
 web_viewer/public/
@@ -135,8 +157,6 @@ web_viewer/public/
 ├─ features/
 │  ├─ feature_manifest.json
 │  └─ atlas/feature_palette_set_{setId}.png
-├─ texts/
-│  └─ memorytext_zhhans.json
 ├─ worldmap/
 │  ├─ worldmap_manifest.json
 │  └─ worldmap.png
@@ -146,6 +166,15 @@ web_viewer/public/
 │  └─ audio/{bgm,se}/*.ogg
 └─ debug/
    └─ previews/m{mapId}.png
+```
+
+中文文本档案单独输出到：
+
+```text
+web_viewer/data/texts/
+├─ consolidated_texts.json
+├─ static_relationships.json
+└─ event_dialogues.json
 ```
 
 字段级别的契约说明见 [render_spec.md](render_spec.md)。
@@ -158,8 +187,8 @@ web_viewer/public/
   - 主画布、图层开关、调试开关、悬停格详情、worldmap 跳转
 - 世界地图页
   - `i_worldmap.dat.jpg` 合成整图、热点区域、`map_id` 列表
-- 文本资源页
-  - `memorytext_zhhans.dat.jpg` 检索、`text_id` 定位、原始文本和轻量标记预览
+- 文本档案页
+  - 剧情对白、名称/描述关系、`text_id` 定位和原始文本检查
 - 图片资源页
   - `game_res` 直出 PNG 的缩略图浏览、大图预览和来源信息
 - 音频资源页
@@ -168,11 +197,13 @@ web_viewer/public/
 ## 代码入口
 
 - `scripts/export_map_viewer_dataset.py`
-  - 主导出脚本，负责 APK 解压、资源解析、导出和校验
+  - 主导出脚本，负责地图 / worldmap / 图片 / 音频导出
+- `scripts/consolidate_texts.py`
+  - 中文文本汇总、静态关系导出和事件对白导出
 - `web_viewer/src/App.tsx`
   - 资源索引页和各个 viewer 页面
 - `web_viewer/src/data.ts`
-  - `public/` 数据加载
+  - `public/` 数据加载，以及 `web_viewer/data/texts/` 文本档案加载
 - `web_viewer/src/render.ts`
   - 地图绘制逻辑
 - `reverse_workflow.md`

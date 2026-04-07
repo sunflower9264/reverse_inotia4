@@ -145,7 +145,6 @@ def prepare_output_dir() -> None:
     (OUTPUT_DIR / "maps").mkdir(parents=True, exist_ok=True)
     (OUTPUT_DIR / "tiles").mkdir(parents=True, exist_ok=True)
     (OUTPUT_DIR / "features").mkdir(parents=True, exist_ok=True)
-    (OUTPUT_DIR / "texts").mkdir(parents=True, exist_ok=True)
     (OUTPUT_DIR / "worldmap").mkdir(parents=True, exist_ok=True)
     (OUTPUT_DIR / "debug" / "previews").mkdir(parents=True, exist_ok=True)
 
@@ -1283,32 +1282,6 @@ def load_memorytext_records(assets_dir: Path, resource_name: str = MEMORYTEXT_RE
     return parse_memorytext_blob(load_resource_blob(assets_dir, resource_name))
 
 
-def build_memorytext_dataset(texts_dir: Path, records: list[str]) -> dict[str, Any]:
-    texts_dir.mkdir(parents=True, exist_ok=True)
-    non_empty_entries = [
-        {
-            "text_id": text_id,
-            "text": text,
-            "has_markup": ("$" in text or "&" in text),
-        }
-        for text_id, text in enumerate(records)
-        if text
-    ]
-    manifest = {
-        "language": "zh-Hans",
-        "resource_name": f"{MEMORYTEXT_RESOURCE_NAME}.dat.jpg",
-        "record_count": len(records),
-        "non_empty_count": len(non_empty_entries),
-        "markup_count": sum(1 for entry in non_empty_entries if entry["has_markup"]),
-        "entries": non_empty_entries,
-    }
-    (texts_dir / "memorytext_zhhans.json").write_text(
-        json.dumps(manifest, ensure_ascii=False, separators=(",", ":")),
-        encoding="utf-8",
-    )
-    return manifest
-
-
 def detect_passthrough_asset_format(source_path: Path) -> tuple[str, str] | None:
     with source_path.open("rb") as handle:
         header = handle.read(16)
@@ -1514,8 +1487,6 @@ def main() -> None:
     render_tile_atlases(OUTPUT_DIR / "tiles", tile_sprites, palette_sets)
     print("Rendering feature atlases...")
     render_feature_atlases(OUTPUT_DIR / "features", feature_sprites, palette_sets, feature_group_lookup)
-    print("Rendering memorytext dataset...")
-    memorytext_manifest = build_memorytext_dataset(OUTPUT_DIR / "texts", memorytext_records)
     print("Rendering worldmap...")
     render_worldmap_dataset(OUTPUT_DIR / "worldmap", worldmap_sprites, worldmap_region_sources)
     print("Collecting passthrough image/audio assets...")
@@ -1569,10 +1540,6 @@ def main() -> None:
             {
                 "map_count": MAP_COUNT,
                 "tile_size": TILE_SIZE,
-                "memorytext_manifest_path": "texts/memorytext_zhhans.json",
-                "memorytext_record_count": memorytext_manifest["record_count"],
-                "memorytext_non_empty_count": memorytext_manifest["non_empty_count"],
-                "memorytext_markup_count": memorytext_manifest["markup_count"],
                 "passthrough_assets_manifest_path": "extras/assets_manifest.json",
                 "passthrough_image_count": passthrough_assets_manifest["image_count"],
                 "passthrough_audio_count": passthrough_assets_manifest["audio_count"],

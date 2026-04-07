@@ -1,15 +1,21 @@
 import type {
+  ConsolidatedTextsDataset,
   DatasetBundle,
+  EventDialoguesDataset,
   FeatureAtlasEntry,
   FeatureManifest,
   MapData,
-  MemoryTextManifest,
   PassthroughAssetsManifest,
   RootManifest,
+  StaticRelationshipsDataset,
+  TextResourceBundle,
   TileAtlasEntry,
   TilesetManifest,
   WorldmapManifest,
 } from "./types";
+import consolidatedTextsUrl from "../data/texts/consolidated_texts.json?url";
+import eventDialoguesUrl from "../data/texts/event_dialogues.json?url";
+import staticRelationshipsUrl from "../data/texts/static_relationships.json?url";
 
 const jsonCache = new Map<string, Promise<unknown>>();
 const imageCache = new Map<string, Promise<HTMLImageElement>>();
@@ -22,20 +28,23 @@ export function datasetUrl(path: string): string {
   return `${basePath}${path}`;
 }
 
-async function fetchJson<T>(path: string): Promise<T> {
-  const url = datasetUrl(path);
+async function fetchJsonUrl<T>(url: string, label: string): Promise<T> {
   if (!jsonCache.has(url)) {
     jsonCache.set(
       url,
       fetch(url).then(async (response) => {
         if (!response.ok) {
-          throw new Error(`Failed to load ${path}: ${response.status} ${response.statusText}`);
+          throw new Error(`Failed to load ${label}: ${response.status} ${response.statusText}`);
         }
         return response.json();
       }),
     );
   }
   return jsonCache.get(url) as Promise<T>;
+}
+
+async function fetchJson<T>(path: string): Promise<T> {
+  return fetchJsonUrl(datasetUrl(path), path);
 }
 
 function loadImage(path: string): Promise<HTMLImageElement> {
@@ -102,6 +111,28 @@ export function loadWorldmapImage(path: string): Promise<HTMLImageElement> {
   return loadImage(path);
 }
 
-export function loadMemorytextManifest(path: string): Promise<MemoryTextManifest> {
-  return fetchJson<MemoryTextManifest>(path);
+export function loadConsolidatedTexts(): Promise<ConsolidatedTextsDataset> {
+  return fetchJsonUrl<ConsolidatedTextsDataset>(consolidatedTextsUrl, "data/texts/consolidated_texts.json");
+}
+
+export function loadStaticRelationships(): Promise<StaticRelationshipsDataset> {
+  return fetchJsonUrl<StaticRelationshipsDataset>(staticRelationshipsUrl, "data/texts/static_relationships.json");
+}
+
+export function loadEventDialogues(): Promise<EventDialoguesDataset> {
+  return fetchJsonUrl<EventDialoguesDataset>(eventDialoguesUrl, "data/texts/event_dialogues.json");
+}
+
+export async function loadTextResourceBundle(): Promise<TextResourceBundle> {
+  const [consolidated, relationships, dialogues] = await Promise.all([
+    loadConsolidatedTexts(),
+    loadStaticRelationships(),
+    loadEventDialogues(),
+  ]);
+
+  return {
+    consolidated,
+    relationships,
+    dialogues,
+  };
 }

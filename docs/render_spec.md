@@ -4,9 +4,17 @@
 
 # Web Viewer Render Spec
 
-本规范对应仓库根目录 `web_viewer/public/` 中的数据集，覆盖 `m0..m415` 的静态地图显示、`worldmap` 的整图和热点映射、`memorytext_zhhans` 的文本展示，以及 `game_res` 中直出 PNG / OGG 的导出清单。
+本规范对应当前 viewer 运行时使用的两组数据集：
 
-数据集由 `python scripts/export_map_viewer_dataset.py` 生成。脚本会自动读取 `apk/` 中唯一 APK，并从解压后的 `workdir/<apk_stem>/assets/common/game_res/` 导出资源。
+- `web_viewer/public/`
+  - `m0..m415` 的静态地图显示、`worldmap` 的整图和热点映射、以及 `game_res` 中直出 PNG / OGG 的导出清单
+- `web_viewer/data/texts/`
+  - 简中 `memorytext_zhhans`、`game.dat.jpg`、`eventdata.dat.jpg` 关联出的文本档案
+
+数据集分别由以下脚本生成：
+
+- `python scripts/export_map_viewer_dataset.py`
+- `python scripts/consolidate_texts.py`
 
 如果想看“这些结构是怎么逆出来的”，请先读 [reverse_workflow.md](reverse_workflow.md)；本文只负责记录当前稳定下来的导出契约。
 
@@ -22,7 +30,9 @@
 - 静态 `map feature`
 - `worldmap` 整图
 - `worldmap` 区域热点
-- `memorytext` 简中文本清单
+- 中文对白场景
+- 静态名称/描述关系
+- 原始 `text_id` 文本索引
 - 直出 PNG 图片清单
 - 直出 OGG 音频清单
 
@@ -45,13 +55,17 @@ web_viewer/public/
 ├─ tiles/atlas/tile_palette_set_{setId}.png
 ├─ features/feature_manifest.json
 ├─ features/atlas/feature_palette_set_{setId}.png
-├─ texts/memorytext_zhhans.json
 ├─ worldmap/worldmap_manifest.json
 ├─ worldmap/worldmap.png
 ├─ extras/assets_manifest.json
 ├─ extras/images/*.png
 ├─ extras/audio/{bgm,se}/*.ogg
 └─ debug/previews/m{mapId}.png
+
+web_viewer/data/texts/
+├─ consolidated_texts.json
+├─ static_relationships.json
+└─ event_dialogues.json
 ```
 
 ## 坐标与单位
@@ -73,10 +87,6 @@ web_viewer/public/
 
 - `map_count`
 - `tile_size`
-- `memorytext_manifest_path`
-- `memorytext_record_count`
-- `memorytext_non_empty_count`
-- `memorytext_markup_count`
 - `passthrough_assets_manifest_path`
 - `passthrough_image_count`
 - `passthrough_audio_count`
@@ -124,22 +134,116 @@ web_viewer/public/
 - `raw_header_0`
 - `raw_header_1`
 
-## Memorytext 清单
+## 文本档案清单
 
-`texts/memorytext_zhhans.json` 字段：
+`web_viewer/data/texts/consolidated_texts.json` 字段：
 
+- `description`
+- `source_file`
 - `language`
-- `resource_name`
-- `record_count`
-- `non_empty_count`
-- `markup_count`
+- `total_text_ids`
+- `non_empty_entries`
+- `referenced_by_tables`
+- `unreferenced_count`
+- `category_summary`
+- `table_definitions[]`
 - `entries[]`
+
+`table_definitions[]` 每项字段：
+
+- `table_index`
+- `table_name`
+- `category`
+- `record_count`
+- `record_size`
+- `text_fields[]`
+- `referenced_text_count`
 
 `entries[]` 每项字段：
 
 - `text_id`
 - `text`
 - `has_markup`
+- `categories[]`
+- `referenced_by[]`
+
+`web_viewer/data/texts/static_relationships.json` 字段：
+
+- `description`
+- `language`
+- `source_files`
+- `npc_descriptions`
+- `item_descriptions`
+- `choice_sets`
+- `quest_texts`
+
+关系类条目当前覆盖：
+
+- `npc_descriptions.entries[]`
+  - `npc_id`
+  - `name_text_id`
+  - `name`
+  - `description_text_id`
+  - `description`
+- `item_descriptions.entries[]`
+  - `item_id`
+  - `name_text_id`
+  - `name`
+  - `description_text_id`
+  - `description`
+- `choice_sets.entries[]`
+  - `choice_id`
+  - `prompt_text_id`
+  - `prompt`
+  - `options[]`
+- `quest_texts.entries[]`
+  - `quest_id`
+  - `title_text_id`
+  - `title`
+  - `detail_text_id`
+  - `detail`
+  - `progress_text_id`
+  - `progress`
+  - `completion_text_id`
+  - `completion`
+
+`web_viewer/data/texts/event_dialogues.json` 字段：
+
+- `description`
+- `language`
+- `source_files`
+- `event_count`
+- `eventdata_record_count`
+- `eventdata_record_size`
+- `opcode_kinds`
+- `kind_counts`
+- `speaker_catalog[]`
+- `events[]`
+
+`events[]` 每项字段：
+
+- `event_index`
+- `event_code`
+- `event_type`
+- `data_start_index`
+- `command_count`
+- `ui_flag`
+- `entry_count`
+- `preview_text`
+- `entries[]`
+
+`entries[]` 当前分两类：
+
+- 对白/旁白/覆盖文字
+  - `kind`
+  - `text_id`
+  - `text`
+  - `plain_text`
+  - `speaker`
+- 选项
+  - `kind == "choice"`
+  - `choice_id`
+  - `choice`
 
 ## Worldmap 清单
 
@@ -274,11 +378,20 @@ worldmap sprite 沿用和 tile 相同的头部字段：
 - `MEMORYTEXT_GetText(id)` 实际读取 `base + 4 + id * 3` 的 offset，再直接返回该位置的字符串指针
 - 字符串本体是 UTF-8，并以 `0x00` 结尾
 
-导出后的 `texts/memorytext_zhhans.json` 只保留非空条目，并额外标记：
+当前文本导出不会再直接产出单独的 `texts/memorytext_zhhans.json`。取而代之的是：
+
+- `consolidated_texts.json`
+  - 保留原始 `text_id -> text` 关系、分类和表引用
+- `static_relationships.json`
+  - 输出 `名称 -> 描述`、`题面 -> 选项` 这类静态关系
+- `event_dialogues.json`
+  - 输出 `speaker + text + choice` 这类事件对白结构
+
+其中 `consolidated_texts.json` 的文本条目会额外标记：
 
 - `has_markup == true` 当文本包含 `$` 或 `&` 控制标记
 
-当前 viewer 对常见标记做基础解释：
+viewer 仍然对常见标记做基础解释：
 
 - `&N` -> 换行
 - `&P` -> 段落分隔
