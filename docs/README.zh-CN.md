@@ -6,6 +6,23 @@
 
 `reverse_inotia4` 是一个围绕 Android APK 资源逆向整理出来的本地工具链：它会从 `apk/` 中读取唯一 APK，自动解压到 `workdir/`，解析 `assets/common/game_res/` 中的资源，再分别生成地图/世界地图/图片/音频数据集，以及中文文本档案数据集。
 
+
+Overview:
+![alt text](./images/overview.png)
+
+Map:
+![alt text](./images/map.png)
+
+Tile:
+![alt text](./images/tile.png)
+## Documentation
+
+Feature:
+![alt text](./images/feature.png)
+
+Text:
+![alt text](./images/text.png)
+
 ## 文档入口
 
 - [仓库根目录英文 README](../README.md)

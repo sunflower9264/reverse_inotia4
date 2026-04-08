@@ -8,7 +8,21 @@ Chinese README: [docs/README.zh-CN.md](docs/README.zh-CN.md)
 
 `reverse_inotia4` is a local reverse-engineering toolkit for Android APK resources. It reads the single APK placed in `apk/`, extracts it into `workdir/`, parses resources from `assets/common/game_res/`, and generates web-viewable datasets for maps, worldmap, text, images, and audio.
 
+Overview:
+![alt text](./docs/images/overview.png)
+
+Map:
+![alt text](./docs/images/map.png)
+
+Tile:
+![alt text](./docs/images/tile.png)
 ## Documentation
+
+Feature:
+![alt text](./docs/images/feature.png)
+
+Text:
+![alt text](./docs/images/text.png)
 
 - [Chinese README](docs/README.zh-CN.md)
   - Full Chinese project overview and usage guide
