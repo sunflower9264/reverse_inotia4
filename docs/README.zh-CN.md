@@ -15,7 +15,6 @@ Map:
 
 Tile:
 ![alt text](./images/tile.png)
-## Documentation
 
 Feature:
 ![alt text](./images/feature.png)

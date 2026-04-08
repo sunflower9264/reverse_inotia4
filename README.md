@@ -16,13 +16,14 @@ Map:
 
 Tile:
 ![alt text](./docs/images/tile.png)
-## Documentation
 
 Feature:
 ![alt text](./docs/images/feature.png)
 
 Text:
 ![alt text](./docs/images/text.png)
+
+## Documentation
 
 - [Chinese README](docs/README.zh-CN.md)
   - Full Chinese project overview and usage guide
