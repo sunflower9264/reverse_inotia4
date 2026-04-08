@@ -11,21 +11,30 @@ Usage:
 from __future__ import annotations
 
 import json
-import lzma
-import shutil
 import struct
-import zipfile
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[1]
-APK_INPUT_DIR = ROOT / "apk"
-WORKDIR = ROOT / "workdir"
+from inotia_resources import (
+    ROOT,
+    TARGET_LANGUAGE,
+    TARGET_MEMORYTEXT_STEM,
+    find_assets_dir,
+    get_game_table,
+    get_record_slice,
+    iter_record_slices,
+    load_game_tables as shared_load_game_tables,
+    load_memorytext_records,
+    load_resource_blob,
+    parse_flat_record_blob,
+    parse_table_records,
+    read_u8,
+    read_u16,
+    read_u32,
+)
+
 OUTPUT_DIR = ROOT / "web_viewer" / "data" / "texts"
-RESOURCE_RELATIVE_DIR = Path("assets") / "common" / "game_res"
-TARGET_MEMORYTEXT_STEM = "memorytext_zhhans"
-TARGET_LANGUAGE = "zh-Hans"
 
 # ---------------------------------------------------------------------------
 # Table index -> name mapping (extracted from EXCELDATA_Create in libgame.so)
@@ -255,128 +264,7 @@ EVENT_SPEAKER_TYPE_LABELS: dict[int, str] = {
     2: "npc",
 }
 
-# ---------------------------------------------------------------------------
-# LZMA decompression (same logic as export_map_viewer_dataset.py)
-# ---------------------------------------------------------------------------
-
-def _props_to_lclppb(prop: int) -> tuple[int, int, int] | None:
-    if prop >= 225:
-        return None
-    pb = prop // 45
-    rem = prop % 45
-    lp = rem // 9
-    lc = rem % 9
-    return lc, lp, pb
-
-
-def _decode_raw_with_limit(comp: bytes, filters: list[dict[str, Any]], out_size: int) -> bytes:
-    dec = lzma.LZMADecompressor(format=lzma.FORMAT_RAW, filters=filters)
-    out = bytearray()
-    data = comp
-    while len(out) < out_size:
-        chunk = dec.decompress(data, max_length=out_size - len(out))
-        out.extend(chunk)
-        data = b""
-        if len(out) >= out_size:
-            break
-        if not chunk and dec.needs_input:
-            break
-    return bytes(out)
-
-
-def decode_standard_outer(data: bytes) -> bytes:
-    if len(data) < 16 or data[:4] != b"\x01\x00\x5d\x00":
-        raise ValueError("resource is not a standard 0x01 00 5d 00 container")
-    props = _props_to_lclppb(data[2])
-    if props is None:
-        raise ValueError(f"invalid outer LZMA property byte: {data[2]:#x}")
-    lc, lp, pb = props
-    dict_size = int.from_bytes(data[3:7], "little")
-    out_size = int.from_bytes(data[7:11], "little")
-    decoded = _decode_raw_with_limit(
-        data[15:],
-        [{"id": lzma.FILTER_LZMA1, "dict_size": max(dict_size, 4096),
-          "lc": lc, "lp": lp, "pb": pb}],
-        out_size,
-    )
-    if len(decoded) != out_size:
-        raise ValueError(f"short outer decode: {len(decoded)} != {out_size}")
-    return decoded
-
-
-# ---------------------------------------------------------------------------
-# game.dat.jpg excel table parsing
-# ---------------------------------------------------------------------------
-
-def parse_excel_tables(blob: bytes) -> list[bytes]:
-    table_count = int.from_bytes(blob[:2], "little")
-    header_size = 2 + (table_count + 1) * 3
-    if header_size > len(blob):
-        raise ValueError("excel header extends beyond blob size")
-    offsets = [
-        int.from_bytes(blob[2 + i * 3 : 5 + i * 3], "little")
-        for i in range(table_count + 1)
-    ]
-    if offsets[0] != 0:
-        raise ValueError("excel table offsets do not start at zero")
-    return [
-        blob[header_size + offsets[i] : header_size + offsets[i + 1]]
-        for i in range(table_count)
-    ]
-
-
-def parse_table_records(table_blob: bytes) -> tuple[int, int, bytes] | None:
-    if len(table_blob) < 6:
-        return None
-    record_count = struct.unpack_from("<I", table_blob, 0)[0]
-    record_size = struct.unpack_from("<H", table_blob, 4)[0]
-    if record_size == 0 or record_count == 0:
-        return None
-    return record_count, record_size, table_blob[6:]
-
-
-def parse_flat_record_blob(blob: bytes) -> tuple[int, int, bytes]:
-    if len(blob) < 6:
-        raise ValueError("record blob is too small")
-    record_count = struct.unpack_from("<I", blob, 0)[0]
-    record_size = struct.unpack_from("<H", blob, 4)[0]
-    if record_count == 0 or record_size == 0:
-        raise ValueError("record blob has zero-sized header")
-    body = blob[6:]
-    expected_size = record_count * record_size
-    if expected_size > len(body):
-        raise ValueError(
-            f"record blob body is truncated: expected {expected_size} bytes, got {len(body)}"
-        )
-    return record_count, record_size, body[:expected_size]
-
-
-def read_u8(blob: bytes, offset: int) -> int:
-    return blob[offset]
-
-
-def read_u16(blob: bytes, offset: int) -> int:
-    return struct.unpack_from("<H", blob, offset)[0]
-
-
-def read_u32(blob: bytes, offset: int) -> int:
-    return struct.unpack_from("<I", blob, offset)[0]
-
-
-def get_record_slice(body: bytes, record_size: int, index: int) -> bytes | None:
-    start = index * record_size
-    end = start + record_size
-    if start < 0 or end > len(body):
-        return None
-    return body[start:end]
-
-
-def iter_record_slices(record_count: int, record_size: int, body: bytes) -> list[tuple[int, bytes]]:
-    actual_rc = min(record_count, len(body) // record_size)
-    return [
-        (index, body[index * record_size : (index + 1) * record_size])
-        for index in range(actual_rc)
-    ]
+# Shared resource parsing lives in `inotia_resources.py`.
 
 
 def get_text(records: list[str], text_id: int) -> str:
@@ -390,30 +278,6 @@ def strip_text_markup(text: str) -> str:
     for code in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
         out = out.replace(f"${code}", "")
     return "\n".join(line.rstrip() for line in out.splitlines()).strip()
-
-
-# ---------------------------------------------------------------------------
-# Memorytext parsing
-# ---------------------------------------------------------------------------
-
-def parse_memorytext_blob(blob: bytes) -> list[str]:
-    if len(blob) < 4:
-        raise ValueError("memorytext blob is too small")
-    record_count = struct.unpack_from("<I", blob, 0)[0]
-    table_end = 4 + record_count * 3
-    if table_end > len(blob):
-        raise ValueError("memorytext offset table extends beyond blob size")
-    offsets: list[int] = []
-    for i in range(record_count):
-        offset = int.from_bytes(blob[4 + i * 3 : 7 + i * 3], "little")
-        offsets.append(offset)
-    records: list[str] = []
-    for offset in offsets:
-        end = blob.find(b"\x00", offset)
-        if end == -1:
-            end = len(blob)
-        records.append(blob[offset:end].decode("utf-8", errors="replace"))
-    return records
 
 
 # ---------------------------------------------------------------------------
@@ -481,61 +345,13 @@ def scan_table_for_text_ids(
     return hits
 
 
-# ---------------------------------------------------------------------------
-# APK / asset discovery
-# ---------------------------------------------------------------------------
-
-def discover_single_apk() -> Path:
-    apk_paths = sorted(APK_INPUT_DIR.glob("*.apk"))
-    if not apk_paths:
-        raise FileNotFoundError(
-            f"Expected exactly 1 APK under {APK_INPUT_DIR}, found none"
-        )
-    if len(apk_paths) != 1:
-        joined = ", ".join(path.name for path in apk_paths)
-        raise FileNotFoundError(
-            f"Expected exactly 1 APK under {APK_INPUT_DIR}, found {len(apk_paths)}: {joined}"
-        )
-    return apk_paths[0]
-
-
-def extract_assets_dir(apk_path: Path) -> Path:
-    if WORKDIR.exists():
-        shutil.rmtree(WORKDIR)
-
-    extract_root = WORKDIR / apk_path.stem
-    extract_root.mkdir(parents=True, exist_ok=True)
-    print(f"Extracting {apk_path.name} -> {extract_root}")
-    with zipfile.ZipFile(apk_path) as archive:
-        archive.extractall(extract_root)
-
-    assets_dir = extract_root / RESOURCE_RELATIVE_DIR
-    if not assets_dir.is_dir():
-        raise FileNotFoundError(f"Missing resource directory after extraction: {assets_dir}")
-    return assets_dir
-
-
-def find_assets_dir() -> Path:
-    """Find the game_res directory under workdir/, or build it from the APK."""
-    candidates = list(WORKDIR.glob("*/assets/common/game_res"))
-    if not candidates:
-        apk_path = discover_single_apk()
-        return extract_assets_dir(apk_path)
-    if len(candidates) != 1:
-        raise FileNotFoundError(
-            f"Expected exactly 1 game_res directory under workdir/, found {len(candidates)}"
-        )
-    return candidates[0]
-
-
 def load_primary_memorytext(assets_dir: Path) -> list[str]:
     """Load the simplified Chinese memorytext file."""
     path = assets_dir / f"{TARGET_MEMORYTEXT_STEM}.dat.jpg"
     if not path.exists():
         raise FileNotFoundError(f"Missing required text resource: {path}")
 
-    blob = decode_standard_outer(path.read_bytes())
-    records = parse_memorytext_blob(blob)
+    records = load_memorytext_records(assets_dir, TARGET_MEMORYTEXT_STEM)
     non_empty = sum(1 for r in records if r)
     print(
         f"  {path.name:35s}  lang={TARGET_LANGUAGE:7s}  "
@@ -546,22 +362,9 @@ def load_primary_memorytext(assets_dir: Path) -> list[str]:
 
 def load_game_tables(assets_dir: Path) -> list[bytes]:
     print("\nParsing game.dat.jpg...")
-    game_blob = decode_standard_outer((assets_dir / "game.dat.jpg").read_bytes())
-    tables = parse_excel_tables(game_blob)
+    tables = shared_load_game_tables(assets_dir)
     print(f"  Total tables: {len(tables)}")
     return tables
-
-
-def get_game_table(
-    tables: list[bytes],
-    table_name: str,
-) -> tuple[int, int, int, bytes]:
-    table_index = TABLE_INDEX_BY_NAME[table_name]
-    parsed = parse_table_records(tables[table_index])
-    if parsed is None:
-        raise ValueError(f"{table_name} is empty or malformed")
-    record_count, record_size, body = parsed
-    return table_index, record_count, record_size, body
 
 
 def build_text_entries(
@@ -919,7 +722,7 @@ def build_event_dialogues(
         for entry in choice_sets["entries"]
     }
 
-    event_blob = decode_standard_outer((assets_dir / "eventdata.dat.jpg").read_bytes())
+    event_blob = load_resource_blob(assets_dir, "eventdata")
     data_count, data_size, data_body = parse_flat_record_blob(event_blob)
 
     speaker_stats: dict[str, dict[str, Any]] = {}
